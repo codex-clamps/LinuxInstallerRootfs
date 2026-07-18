@@ -1,0 +1,121 @@
+name: Build installer toolchains
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 2 * *"
+  push:
+    branches:
+      - main
+    paths:
+      - toolchains.json
+      - TOOLCHAINS.md
+      - docker/filesystem-tools.Dockerfile
+      - scripts/build-grub.sh
+      - scripts/build-filesystem-tools.sh
+      - scripts/build-winbtrfs.sh
+      - scripts/fetch-signed-drivers.sh
+      - scripts/create-toolchain-manifest.sh
+      - .github/workflows/build-toolchains.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: toolchains-release
+  cancel-in-progress: false
+
+jobs:
+  grub:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build standalone GRUB EFI binary
+        run: bash scripts/build-grub.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grub-uefi-x86_64
+          path: |
+            dist/grubx64.efi
+            dist/grubx64.efi.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+
+  filesystem-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Linux filesystem tool root
+        run: bash scripts/build-filesystem-tools.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filesystem-tools-x86_64
+          path: |
+            dist/filesystem-tools-x86_64.tar.zst
+            dist/filesystem-tools-x86_64.tar.zst.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+
+  winbtrfs-source-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unsigned WinBtrfs x64 package
+        run: bash scripts/build-winbtrfs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winbtrfs-x64-unsigned
+          path: |
+            dist/winbtrfs-1.9-x64-unsigned.zip
+            dist/winbtrfs-1.9-x64-unsigned.zip.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+
+  signed-drivers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and verify signed upstream drivers
+        run: bash scripts/fetch-signed-drivers.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-filesystem-drivers
+          path: |
+            dist/winbtrfs-1.9-x64-signed.zip
+            dist/winbtrfs-1.9-x64-signed.zip.sha256
+            dist/ext4fsd-0.71-signed-setup.exe
+            dist/ext4fsd-0.71-signed-setup.exe.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+
+  publish:
+    needs:
+      - grub
+      - filesystem-tools
+      - winbtrfs-source-build
+      - signed-drivers
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: toolchains-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: dist
+          merge-multiple: true
+      - name: Create toolchain manifest
+        run: bash scripts/create-toolchain-manifest.sh dist toolchains-manifest.json "${GITHUB_REPOSITORY}" "${RELEASE_TAG}"
+      - name: Publish stable toolchain release
+        shell: bash
+        run: |
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" dist/* toolchains-manifest.json --clobber
+          else
+            gh release create "${RELEASE_TAG}" dist/* toolchains-manifest.json               --title "Latest installer toolchains"               --notes "GRUB, Linux filesystem tools, and optional signed or development filesystem drivers for LinuxInstallerForWindows."
+          fi

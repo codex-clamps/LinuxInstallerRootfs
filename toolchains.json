@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "id": "grub-uefi-x86_64",
+      "displayName": "GRUB x86_64 UEFI",
+      "version": "Ubuntu 24.04 package",
+      "kind": "bootloader",
+      "platform": "uefi-x86_64",
+      "fileName": "grubx64.efi",
+      "requiredForInstall": true,
+      "signed": false,
+      "sourceUrl": "https://packages.ubuntu.com/noble/grub-efi-amd64-bin",
+      "license": "GPL-3.0-or-later",
+      "notes": "Standalone GRUB EFI binary with FAT, EXT, Btrfs, GPT, Linux, chainloader, and search modules."
+    },
+    {
+      "id": "filesystem-tools-x86_64",
+      "displayName": "Linux EXT4 and Btrfs filesystem tools",
+      "version": "Alpine 3.22",
+      "kind": "linux-toolchain",
+      "platform": "linux-x86_64",
+      "fileName": "filesystem-tools-x86_64.tar.zst",
+      "requiredForInstall": true,
+      "signed": false,
+      "sourceUrl": "https://hub.docker.com/_/alpine",
+      "license": "Mixed open-source licenses",
+      "notes": "Minimal Linux userspace containing e2fsprogs, btrfs-progs, util-linux, and bash."
+    },
+    {
+      "id": "winbtrfs-x64-unsigned",
+      "displayName": "WinBtrfs x64 source build",
+      "version": "1.9",
+      "kind": "windows-driver-development",
+      "platform": "windows-x64",
+      "fileName": "winbtrfs-1.9-x64-unsigned.zip",
+      "requiredForInstall": false,
+      "signed": false,
+      "sourceUrl": "https://github.com/maharmstone/btrfs/tree/v1.9",
+      "license": "LGPL-3.0-or-later",
+      "notes": "Development-only source build. Windows will not load this driver under normal signature enforcement."
+    },
+    {
+      "id": "winbtrfs-x64-signed",
+      "displayName": "WinBtrfs signed driver package",
+      "version": "1.9",
+      "kind": "windows-driver",
+      "platform": "windows-x64",
+      "fileName": "winbtrfs-1.9-x64-signed.zip",
+      "requiredForInstall": false,
+      "signed": true,
+      "sourceUrl": "https://github.com/maharmstone/btrfs/releases/tag/v1.9",
+      "license": "LGPL-3.0-or-later",
+      "notes": "Official upstream signed package. Installation must require explicit user confirmation."
+    },
+    {
+      "id": "ext4fsd-signed-installer",
+      "displayName": "Ext4Fsd signed driver installer",
+      "version": "0.71",
+      "kind": "windows-driver-installer",
+      "platform": "windows-x64",
+      "fileName": "ext4fsd-0.71-signed-setup.exe",
+      "requiredForInstall": false,
+      "signed": true,
+      "sourceUrl": "https://github.com/bobranten/Ext4Fsd/releases/tag/v0.71",
+      "license": "GPL-2.0-only",
+      "notes": "Optional upstream signed driver with documented EXT4 feature limitations. Never install automatically."
+    }
+  ]
+}
