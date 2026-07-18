@@ -12,11 +12,37 @@
       "signed": false,
       "sourceUrl": "https://packages.ubuntu.com/noble/grub-efi-amd64-bin",
       "license": "GPL-3.0-or-later",
-      "notes": "Standalone GRUB EFI binary with FAT, EXT, Btrfs, GPT, Linux, chainloader, and search modules."
+      "notes": "Standalone GRUB EFI binary with FAT, NTFS, EXT, Btrfs, GPT, Linux, chainloader, and search modules. Secure Boot must be disabled."
+    },
+    {
+      "id": "installer-kernel-x86_64",
+      "displayName": "Linux installer kernel",
+      "version": "Alpine 3.22 linux-lts",
+      "kind": "installer-kernel",
+      "platform": "linux-x86_64",
+      "fileName": "installer.vmlinuz",
+      "requiredForInstall": true,
+      "signed": false,
+      "sourceUrl": "https://pkgs.alpinelinux.org/package/v3.22/main/x86_64/linux-lts",
+      "license": "GPL-2.0-only",
+      "notes": "Generic x86_64 kernel used for the installer boot and the installed system."
+    },
+    {
+      "id": "installer-initramfs-x86_64",
+      "displayName": "Linux installer initramfs",
+      "version": "Alpine 3.22",
+      "kind": "installer-initramfs",
+      "platform": "linux-x86_64",
+      "fileName": "installer.initrd",
+      "requiredForInstall": true,
+      "signed": false,
+      "sourceUrl": "https://hub.docker.com/_/alpine",
+      "license": "Mixed open-source licenses",
+      "notes": "Boot runtime that locates the staged configuration, executes the Bash toolchain, or mounts an installed root filesystem."
     },
     {
       "id": "filesystem-tools-x86_64",
-      "displayName": "Linux EXT4 and Btrfs filesystem tools",
+      "displayName": "Linux EXT4 and Btrfs filesystem and shell tools",
       "version": "Alpine 3.22",
       "kind": "linux-toolchain",
       "platform": "linux-x86_64",
@@ -25,7 +51,7 @@
       "signed": false,
       "sourceUrl": "https://hub.docker.com/_/alpine",
       "license": "Mixed open-source licenses",
-      "notes": "Minimal Linux userspace containing e2fsprogs, btrfs-progs, util-linux, and bash."
+      "notes": "Bash installer userspace containing e2fsprogs, btrfs-progs, GPT, FAT, mount, JSON, archive, and post-setup scripts."
     },
     {
       "id": "winbtrfs-x64-unsigned",
@@ -47,11 +73,11 @@
       "kind": "windows-driver",
       "platform": "windows-x64",
       "fileName": "winbtrfs-1.9-x64-signed.zip",
-      "requiredForInstall": false,
+      "requiredForInstall": true,
       "signed": true,
       "sourceUrl": "https://github.com/maharmstone/btrfs/releases/tag/v1.9",
       "license": "LGPL-3.0-or-later",
-      "notes": "Official upstream signed package. Installation must require explicit user confirmation."
+      "notes": "Official signed package downloaded and unpacked into the per-installation session. It is not silently persisted in the Windows Driver Store."
     },
     {
       "id": "ext4fsd-signed-installer",
@@ -60,11 +86,11 @@
       "kind": "windows-driver-installer",
       "platform": "windows-x64",
       "fileName": "ext4fsd-0.71-signed-setup.exe",
-      "requiredForInstall": false,
+      "requiredForInstall": true,
       "signed": true,
       "sourceUrl": "https://github.com/bobranten/Ext4Fsd/releases/tag/v0.71",
       "license": "GPL-2.0-only",
-      "notes": "Optional upstream signed driver with documented EXT4 feature limitations. Never install automatically."
+      "notes": "Official signed installer downloaded into the per-installation session. The booted Linux toolchain performs EXT4 work without installing this legacy driver system-wide."
     }
   ]
 }

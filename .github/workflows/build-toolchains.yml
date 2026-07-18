@@ -11,8 +11,11 @@ on:
       - toolchains.json
       - TOOLCHAINS.md
       - docker/filesystem-tools.Dockerfile
+      - docker/installer-runtime.Dockerfile
+      - installer/**
       - scripts/build-grub.sh
       - scripts/build-filesystem-tools.sh
+      - scripts/build-installer-runtime.sh
       - scripts/build-winbtrfs.sh
       - scripts/fetch-signed-drivers.sh
       - scripts/create-toolchain-manifest.sh
@@ -42,11 +45,29 @@ jobs:
           retention-days: 2
           compression-level: 0
 
+  installer-runtime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build installer kernel and initramfs
+        run: bash scripts/build-installer-runtime.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-runtime-x86_64
+          path: |
+            dist/installer.vmlinuz
+            dist/installer.vmlinuz.sha256
+            dist/installer.initrd
+            dist/installer.initrd.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+
   filesystem-tools:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build Linux filesystem tool root
+      - name: Build Linux filesystem and shell tool root
         run: bash scripts/build-filesystem-tools.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -95,6 +116,7 @@ jobs:
   publish:
     needs:
       - grub
+      - installer-runtime
       - filesystem-tools
       - winbtrfs-source-build
       - signed-drivers
@@ -117,5 +139,7 @@ jobs:
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" dist/* toolchains-manifest.json --clobber
           else
-            gh release create "${RELEASE_TAG}" dist/* toolchains-manifest.json               --title "Latest installer toolchains"               --notes "GRUB, Linux filesystem tools, and optional signed or development filesystem drivers for LinuxInstallerForWindows."
+            gh release create "${RELEASE_TAG}" dist/* toolchains-manifest.json \
+              --title "Latest installer toolchains" \
+              --notes "GRUB, Linux installer runtime, Bash filesystem tools, and verified filesystem driver packages for LinuxInstallerForWindows."
           fi

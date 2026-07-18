@@ -1,0 +1,91 @@
+#!/bin/sh
+set -eu
+
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+panic() {
+  echo "LinuxInstallerForWindows boot runtime failed: $*" >&2
+  exec sh
+}
+
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t tmpfs tmpfs /run 2>/dev/null || true
+
+for module in nvme ahci sd_mod usb_storage vfat ntfs3 ext4 btrfs; do
+  modprobe "$module" 2>/dev/null || true
+done
+
+get_argument() {
+  key="$1"
+  for argument in $(cat /proc/cmdline); do
+    case "$argument" in
+      "$key"=*)
+        printf '%s\n' "${argument#*=}"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+mode="$(get_argument lifw.mode || true)"
+if [ "$mode" = "install" ]; then
+  config_path="$(get_argument lifw.config || printf '%s' '/.myinstaller/install.json')"
+  mkdir -p /run/source /run/toolchain
+
+  source_device=""
+  for device in $(blkid -o device 2>/dev/null || true); do
+    if mount -o ro "$device" /run/source 2>/dev/null; then
+      if [ -f "/run/source${config_path}" ]; then
+        source_device="$device"
+        break
+      fi
+      umount /run/source || true
+    fi
+  done
+
+  [ -n "$source_device" ] || panic "staged install.json was not found"
+  archive="/run/source/.myinstaller/filesystem-tools.tar.zst"
+  [ -f "$archive" ] || panic "filesystem shell toolchain was not found"
+
+  zstd -dc "$archive" | tar -xpf - -C /run/toolchain
+  mkdir -p /run/toolchain/dev /run/toolchain/proc /run/toolchain/sys /run/toolchain/run
+  mount --rbind /dev /run/toolchain/dev
+  mount --make-rslave /run/toolchain/dev
+  mount --rbind /proc /run/toolchain/proc
+  mount --make-rslave /run/toolchain/proc
+  mount --rbind /sys /run/toolchain/sys
+  mount --make-rslave /run/toolchain/sys
+  mount --rbind /run /run/toolchain/run
+  mount --make-rslave /run/toolchain/run
+
+  exec chroot /run/toolchain /bin/bash /opt/linux-installer/install.sh "/run/source${config_path}"
+fi
+
+root_spec="$(get_argument root || true)"
+[ -n "$root_spec" ] || panic "root= kernel argument is required"
+
+case "$root_spec" in
+  UUID=*)
+    root_device="$(blkid -U "${root_spec#UUID=}" || true)"
+    ;;
+  PARTUUID=*)
+    root_device="$(blkid -t "PARTUUID=${root_spec#PARTUUID=}" -o device | head -n 1 || true)"
+    ;;
+  *)
+    root_device="$root_spec"
+    ;;
+esac
+
+[ -b "$root_device" ] || panic "root device '$root_spec' was not found"
+mkdir -p /newroot
+mount -o rw "$root_device" /newroot || panic "could not mount root device"
+
+mount --move /dev /newroot/dev
+mount --move /proc /newroot/proc
+mount --move /sys /newroot/sys
+mount --move /run /newroot/run
+
+exec switch_root /newroot /sbin/init
