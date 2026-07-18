@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "architecture": "x86_64",
+  "distros": [
+    {
+      "id": "ubuntu-24.04",
+      "distroName": "Ubuntu",
+      "version": "24.04 LTS",
+      "sourceImage": "ubuntu:24.04",
+      "description": "The world's most popular open-source operating system.",
+      "iconUrl": "https://distrowatch.com/images/yvzhuwbpy/ubuntu.png"
+    },
+    {
+      "id": "fedora-40",
+      "distroName": "Fedora",
+      "version": "40",
+      "sourceImage": "fedora:40",
+      "description": "A leading-edge, free and open source operating system.",
+      "iconUrl": "https://distrowatch.com/images/yvzhuwbpy/fedora.png"
+    },
+    {
+      "id": "debian-12",
+      "distroName": "Debian",
+      "version": "12",
+      "sourceImage": "debian:12-slim",
+      "description": "The universal operating system, known for its stability.",
+      "iconUrl": "https://distrowatch.com/images/yvzhuwbpy/debian.png"
+    },
+    {
+      "id": "manjaro-rolling",
+      "distroName": "Manjaro",
+      "version": "Rolling",
+      "sourceImage": "manjarolinux/base:latest",
+      "description": "A professional, user-friendly, Arch-based distribution.",
+      "iconUrl": "https://distrowatch.com/images/yvzhuwbpy/manjaro.png"
+    },
+    {
+      "id": "arch-rolling",
+      "distroName": "Arch Linux",
+      "version": "Rolling",
+      "sourceImage": "archlinux:base",
+      "description": "A lightweight and flexible Linux distribution.",
+      "iconUrl": "https://distrowatch.com/images/yvzhuwbpy/arch.png"
+    }
+  ]
+}

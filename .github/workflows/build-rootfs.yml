@@ -1,0 +1,82 @@
+name: Build root filesystems
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 1 * *"
+  push:
+    branches:
+      - main
+    paths:
+      - distros.json
+      - scripts/**
+      - .github/workflows/build-rootfs.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rootfs-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        shell: bash
+        run: echo "matrix=$(jq -c '{include: [.distros[] | {id, sourceImage}]}' distros.json)" >> "${GITHUB_OUTPUT}"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compressor
+        run: sudo apt-get update && sudo apt-get install --yes zstd
+      - name: Build root filesystem
+        shell: bash
+        run: bash scripts/build-rootfs.sh "${{ matrix.id }}" "${{ matrix.sourceImage }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-${{ matrix.id }}
+          path: |
+            dist/${{ matrix.id }}-x86_64.rootfs.tar.zst
+            dist/${{ matrix.id }}-x86_64.rootfs.tar.zst.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: rootfs-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rootfs-*
+          path: dist
+          merge-multiple: true
+      - name: Create release manifest
+        shell: bash
+        run: bash scripts/create-manifest.sh dist manifest.json "${GITHUB_REPOSITORY}" "${RELEASE_TAG}"
+      - name: Publish stable release
+        shell: bash
+        run: |
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" dist/* manifest.json --clobber
+          else
+            gh release create "${RELEASE_TAG}" dist/* manifest.json \
+              --title "Latest root filesystems" \
+              --notes "Automatically built root filesystem archives for LinuxInstallerForWindows." \
+              --latest
+          fi
