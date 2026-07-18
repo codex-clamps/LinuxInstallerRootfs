@@ -25,7 +25,9 @@ fi
 sudo mkdir -p /usr/x86_64-w64-mingw32/usr/include
 sudo ln -sfn /usr/x86_64-w64-mingw32/include/ddk   /usr/x86_64-w64-mingw32/usr/include/ddk
 
-cmake   -S "${source_directory}"   -B "${build_directory}"   -G Ninja   -DCMAKE_TOOLCHAIN_FILE="${source_directory}/mingw-amd64.cmake"   -DCMAKE_BUILD_TYPE=Release   -DWITH_TEST=OFF
+toolchain_file="$(realpath "${source_directory}/mingw-amd64.cmake")"
+
+cmake   -S "${source_directory}"   -B "${build_directory}"   -G Ninja   -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}"   -DCMAKE_BUILD_TYPE=Release   -DWITH_TEST=OFF
 cmake --build "${build_directory}" --parallel
 
 mkdir -p "${package_directory}"
