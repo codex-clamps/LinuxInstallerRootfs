@@ -14,8 +14,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-sudo apt-get update
-sudo apt-get install --yes cpio gzip
+if command -v apt-get >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install --yes cpio gzip
+fi
 
 rm -rf "${work_directory}"
 mkdir -p "${output_directory}" "${root_directory}"

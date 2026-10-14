@@ -4,18 +4,47 @@ set -eu
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
 panic() {
-  echo "LinuxInstallerForWindows boot runtime failed: $*" >&2
-  exec sh
+  echo "" >&2
+  echo "==============================================================" >&2
+  echo ">>> [LIFW FATAL ERROR] $*" >&2
+  echo "==============================================================" >&2
+  echo "Detected block devices:" >&2
+  blkid 2>/dev/null >&2 || true
+  ls -l /dev/vd* /dev/sd* 2>/dev/null >&2 || true
+  echo "==============================================================" >&2
+  echo "Dropping to rescue shell in 5 seconds..." >&2
+  sleep 5
+  exec /bin/sh
 }
 
 mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+if [ -c /dev/tty0 ]; then
+  exec 0</dev/tty0 1>/dev/tty0 2>/dev/tty0
+elif [ -c /dev/console ]; then
+  exec 0</dev/console 1>/dev/console 2>/dev/console
+fi
+
 mount -t proc proc /proc 2>/dev/null || true
 mount -t sysfs sysfs /sys 2>/dev/null || true
 mount -t tmpfs tmpfs /run 2>/dev/null || true
 
-for module in nvme ahci sd_mod usb_storage vfat ntfs3 ext4 btrfs; do
+ln -s /proc/self/fd /dev/fd 2>/dev/null || true
+ln -s /proc/self/fd/0 /dev/stdin 2>/dev/null || true
+ln -s /proc/self/fd/1 /dev/stdout 2>/dev/null || true
+ln -s /proc/self/fd/2 /dev/stderr 2>/dev/null || true
+
+echo ""
+echo "=============================================================="
+echo "    LinuxInstallerForWindows (Stage 2: Installer Runtime)     "
+echo "=============================================================="
+echo ">>> Initializing Linux Installer boot runtime..."
+echo ">>> Loading storage controller and filesystem modules..."
+
+for module in virtio_pci virtio_blk virtio_scsi hv_vmbus hv_storvsc xen_blkfront \
+              nvme ahci sd_mod usb_storage mmc_block vfat ntfs3 ext4 btrfs xfs; do
   modprobe "$module" 2>/dev/null || true
 done
+mdev -s 2>/dev/null || true
 
 get_argument() {
   key="$1"
@@ -35,21 +64,40 @@ if [ "$mode" = "install" ]; then
   config_path="$(get_argument lifw.config || printf '%s' '/.myinstaller/install.json')"
   mkdir -p /run/source /run/toolchain
 
+  echo ">>> Probing storage devices for staged installer payload..."
   source_device=""
-  for device in $(blkid -o device 2>/dev/null || true); do
-    if mount -o ro "$device" /run/source 2>/dev/null; then
-      if [ -f "/run/source${config_path}" ]; then
-        source_device="$device"
-        break
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    mdev -s 2>/dev/null || true
+    for device in $(blkid -o device 2>/dev/null || true) /dev/vd*[0-9] /dev/sd*[0-9] /dev/nvme*p[0-9]; do
+      [ -b "${device}" ] || continue
+      mounted=0
+      if mount -o ro "${device}" /run/source 2>/dev/null; then
+        mounted=1
+      elif mount -t ntfs3 -o ro,force "${device}" /run/source 2>/dev/null; then
+        mounted=1
+      elif mount -t vfat -o ro "${device}" /run/source 2>/dev/null; then
+        mounted=1
       fi
-      umount /run/source || true
-    fi
+
+      if [ "${mounted}" -eq 1 ]; then
+        if [ -f "/run/source${config_path}" ] || [ -f "/run/source/.myinstaller/install.json" ]; then
+          source_device="${device}"
+          echo ">>> Found installer configuration on ${source_device}"
+          break 2
+        fi
+        umount /run/source 2>/dev/null || true
+      fi
+    done
+    sleep 1
   done
 
-  [ -n "$source_device" ] || panic "staged install.json was not found"
-  archive="/run/source/.myinstaller/filesystem-tools.tar.zst"
-  [ -f "$archive" ] || panic "filesystem shell toolchain was not found"
+  [ -n "$source_device" ] || panic "Staged install.json was not found on any partition"
+  echo ">>> Found installer configuration on ${source_device}"
 
+  archive="/run/source/.myinstaller/filesystem-tools.tar.zst"
+  [ -f "$archive" ] || panic "Filesystem shell toolchain was not found at ${archive}"
+
+  echo ">>> Unpacking filesystem and installer toolchain..."
   zstd -dc "$archive" | tar -xpf - -C /run/toolchain
   mkdir -p /run/toolchain/dev /run/toolchain/proc /run/toolchain/sys /run/toolchain/run
   mount --rbind /dev /run/toolchain/dev
@@ -61,7 +109,13 @@ if [ "$mode" = "install" ]; then
   mount --rbind /run /run/toolchain/run
   mount --make-rslave /run/toolchain/run
 
-  exec chroot /run/toolchain /bin/bash /opt/linux-installer/install.sh "/run/source${config_path}"
+  ln -s /proc/self/fd /run/toolchain/dev/fd 2>/dev/null || true
+  ln -s /proc/self/fd/0 /run/toolchain/dev/stdin 2>/dev/null || true
+  ln -s /proc/self/fd/1 /run/toolchain/dev/stdout 2>/dev/null || true
+  ln -s /proc/self/fd/2 /run/toolchain/dev/stderr 2>/dev/null || true
+
+  echo ">>> Launching installer shell..."
+  chroot /run/toolchain /bin/bash /opt/linux-installer/install.sh "/run/source${config_path}" || panic "installer shell exited with failure"
 fi
 
 root_spec="$(get_argument root || true)"

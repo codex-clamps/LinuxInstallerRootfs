@@ -8,7 +8,11 @@ RUN apk add --no-cache \
     e2fsprogs \
     findutils \
     gptfdisk \
+    sgdisk \
+    grub \
+    grub-efi \
     jq \
+    os-prober \
     parted \
     shadow \
     tar \
