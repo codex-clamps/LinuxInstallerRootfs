@@ -5,6 +5,8 @@ target_root="${1:?target root is required}"
 distro_name="${2:?distribution name is required}"
 root_uuid="${3:?root filesystem UUID is required}"
 root_file_system="${4:?root filesystem type is required}"
+kernel_file="${5:-vmlinuz-linux-installer}"
+initrd_file="${6:-initramfs-linux-installer.img}"
 
 echo ">>> Configuring bootloader and probing operating systems..."
 efi_directory="${target_root}/boot/efi/EFI/LinuxInstaller"
@@ -31,6 +33,13 @@ if chroot "${target_root}" command -v update-grub >/dev/null 2>&1; then
 elif chroot "${target_root}" command -v grub-mkconfig >/dev/null 2>&1; then
   echo ">>> Running grub-mkconfig in target system..."
   chroot "${target_root}" grub-mkconfig -o /boot/grub/grub.cfg && grub_generated=true || true
+elif chroot "${target_root}" command -v grub2-mkconfig >/dev/null 2>&1; then
+  echo ">>> Running grub2-mkconfig in target system (Fedora/RHEL)..."
+  chroot "${target_root}" grub2-mkconfig -o /boot/grub2/grub.cfg && grub_generated=true || true
+  # Expose the Fedora-style config on the path the UEFI forwarding stub reads
+  if [[ "${grub_generated}" == "true" && -s "${target_root}/boot/grub2/grub.cfg" && ! -e "${root_grub_directory}/grub.cfg" ]]; then
+    ln -sfn grub2/grub.cfg "${root_grub_directory}/grub.cfg"
+  fi
 elif command -v grub-mkconfig >/dev/null 2>&1; then
   echo ">>> Running toolchain grub-mkconfig..."
   grub-mkconfig -o "${root_grub_directory}/grub.cfg" && grub_generated=true || true
@@ -45,8 +54,8 @@ set timeout=5
 
 menuentry "${distro_name}" {
     search --no-floppy --fs-uuid --set=linux_root ${root_uuid}
-    linux (\$linux_root)/boot/vmlinuz-linux-installer root=UUID=${root_uuid} rootfstype=${root_file_system} rw
-    initrd (\$linux_root)/boot/initramfs-linux-installer.img
+    linux (\$linux_root)/boot/${kernel_file} root=UUID=${root_uuid} rootfstype=${root_file_system} rw
+    initrd (\$linux_root)/boot/${initrd_file}
 }
 EOF
 fi

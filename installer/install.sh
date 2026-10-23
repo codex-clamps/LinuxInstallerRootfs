@@ -248,9 +248,37 @@ rootfs_path="${source_root}/.myinstaller/${rootfs_file}"
 zstd -dc "${rootfs_path}" | tar --numeric-owner -xpf - -C "${target_root}"
 
 mkdir -p "${target_root}/boot" "${target_root}/boot/grub" "${target_root}/etc"
-cp "${source_root}/.myinstaller/installer.vmlinuz" "${target_root}/boot/vmlinuz-linux-installer"
-cp "${source_root}/.myinstaller/installer.initrd" "${target_root}/boot/initramfs-linux-installer.img"
-chmod 0644 "${target_root}/boot/vmlinuz-linux-installer" "${target_root}/boot/initramfs-linux-installer.img"
+
+# Full GUI rootfs images ship their own vendor kernel and initramfs; only fall
+# back to the minimal installer kernel when the target provides none
+native_kernel_file=""
+native_initrd_file=""
+for kernel_path in "${target_root}"/boot/vmlinuz-*; do
+  [[ -e "${kernel_path}" ]] || continue
+  case "${kernel_path}" in *-rescue-*) continue ;; esac
+  kernel_version="${kernel_path##*/vmlinuz-}"
+  for initrd_path in "${target_root}/boot/initrd.img-${kernel_version}" \
+                     "${target_root}/boot/initramfs-${kernel_version}.img" \
+                     "${target_root}/boot/initrd-${kernel_version}.img" \
+                     "${target_root}/boot/initramfs-${kernel_version}-fallback.img"; do
+    if [[ -e "${initrd_path}" ]]; then
+      native_kernel_file="${kernel_path##*/}"
+      native_initrd_file="${initrd_path##*/}"
+      break 2
+    fi
+  done
+done
+
+if [[ -n "${native_kernel_file}" ]]; then
+  echo ">>> Target rootfs ships native kernel ${native_kernel_file}; keeping vendor kernel..."
+else
+  echo ">>> Target rootfs has no native kernel; installing fallback installer kernel..."
+  cp "${source_root}/.myinstaller/installer.vmlinuz" "${target_root}/boot/vmlinuz-linux-installer"
+  cp "${source_root}/.myinstaller/installer.initrd" "${target_root}/boot/initramfs-linux-installer.img"
+  chmod 0644 "${target_root}/boot/vmlinuz-linux-installer" "${target_root}/boot/initramfs-linux-installer.img"
+  native_kernel_file="vmlinuz-linux-installer"
+  native_initrd_file="initramfs-linux-installer.img"
+fi
 
 : > "${target_root}/etc/fstab"
 jq -c '.partitions[] | select(.mountPoint != "")' "${config_path}" > /tmp/fstab_partitions.json
@@ -300,6 +328,13 @@ elif chroot "${target_root}" getent group wheel >/dev/null 2>&1; then
   chroot "${target_root}" usermod -aG wheel "${username}"
 fi
 
+# Desktop rootfs images ship hardware-access groups the user must join
+for group in video audio render input storage network disk; do
+  if chroot "${target_root}" getent group "${group}" >/dev/null 2>&1; then
+    chroot "${target_root}" usermod -aG "${group}" "${username}" 2>/dev/null || true
+  fi
+done
+
 if [[ -n "${password_hash}" ]]; then
   echo "${username}:${password_hash}" | chroot "${target_root}" chpasswd -e
 elif [[ -n "${password_base64}" ]]; then
@@ -320,6 +355,37 @@ if [[ "${auto_login}" == "true" ]]; then
 ExecStart=
 ExecStart=-/sbin/agetty --autologin ${username} --noclear %I \$TERM
 EOF
+
+  # Graphical display managers get their own autologin configuration
+  for gdm_config_dir in gdm3 gdm; do
+    [[ -d "${target_root}/etc/${gdm_config_dir}" ]] || continue
+    gdm_conf="${target_root}/etc/${gdm_config_dir}/custom.conf"
+    if [[ -f "${gdm_conf}" ]]; then
+      sed -i 's/^#\?[[:space:]]*AutomaticLoginEnable=.*/AutomaticLoginEnable=True/' "${gdm_conf}"
+      sed -i "s/^#\?[[:space:]]*AutomaticLogin=.*/AutomaticLogin=${username}/" "${gdm_conf}"
+      grep -q "^AutomaticLoginEnable=" "${gdm_conf}" || sed -i "/^\[daemon\]/a AutomaticLoginEnable=True" "${gdm_conf}"
+      grep -q "^AutomaticLogin=" "${gdm_conf}" || sed -i "/^\[daemon\]/a AutomaticLogin=${username}" "${gdm_conf}"
+    else
+      cat > "${gdm_conf}" <<EOF
+[daemon]
+AutomaticLoginEnable=True
+AutomaticLogin=${username}
+EOF
+    fi
+  done
+
+  if [[ -f "${target_root}/etc/lightdm/lightdm.conf" ]]; then
+    lightdm_conf="${target_root}/etc/lightdm/lightdm.conf"
+    sed -i '/^autologin-/d' "${lightdm_conf}"
+    sed -i "/^\[Seat:\*\]/a autologin-user=${username}\nautologin-user-timeout=0" "${lightdm_conf}"
+  fi
+
+  if [[ -d "${target_root}/etc/sddm.conf.d" ]]; then
+    cat > "${target_root}/etc/sddm.conf.d/autologin.conf" <<EOF
+[Autologin]
+User=${username}
+EOF
+  fi
 fi
 
 chroot "${target_root}" systemd-machine-id-setup 2>/dev/null || true
@@ -329,7 +395,7 @@ chroot "${target_root}" systemctl enable systemd-networkd 2>/dev/null || true
 echo ">>> [6/6] Probing operating systems and generating bootloader configuration..."
 root_uuid="$(blkid -s UUID -o value "${root_device}")"
 distro_name="$(json_string '.distroName')"
-/opt/linux-installer/post-setup.sh "${target_root}" "${distro_name}" "${root_uuid}" "${root_file_system}"
+/opt/linux-installer/post-setup.sh "${target_root}" "${distro_name}" "${root_uuid}" "${root_file_system}" "${native_kernel_file}" "${native_initrd_file}"
 
 result_path="${source_root}/.myinstaller/install-result.json"
 jq 'del(.user.passwordBase64, .user.passwordHash) | .status = "staged-for-first-boot"' "${config_path}" > "${result_path}" 2>/dev/null || true
