@@ -3,6 +3,22 @@ set -eu
 
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
+distro_id="${1:-}"
+provision_directory="/tmp/provision"
+family="${distro_id%%-*}"
+
+# Dedicated full GUI provisioners ship per distribution family; everything
+# else (debian-12, arch-rolling, ...) keeps the minimal container-based rootfs
+if [ -n "${distro_id}" ] && [ -f "${provision_directory}/${family}.sh" ]; then
+  echo ">>> Running full GUI provisioner for ${distro_id}..."
+  /bin/bash "${provision_directory}/${family}.sh"
+  mkdir -p /boot/grub
+  : > /etc/machine-id
+  rm -f /var/lib/dbus/machine-id
+  rm -rf /var/log/* /tmp/* /var/tmp/* 2>/dev/null || true
+  exit 0
+fi
+
 if command -v apt-get >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
