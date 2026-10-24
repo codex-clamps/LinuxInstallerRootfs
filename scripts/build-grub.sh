@@ -30,10 +30,16 @@ echo "LinuxInstallerForWindows configuration was not found."
 sleep --interruptible 10
 GRUBCFG
 
+grub_modules="part_gpt part_msdos fat ntfs ext2 btrfs normal linux chain configfile search search_fs_file search_fs_uuid search_label echo test sleep"
+# connectefi exists in grub 2.12+; older builds auto-connect at startup instead
+if [[ -f "/usr/lib/grub/x86_64-efi/connectefi.mod" ]]; then
+  grub_modules="connectefi ${grub_modules}"
+fi
+
 grub-mkstandalone \
   --format=x86_64-efi \
   --output="${output_directory}/grubx64.efi" \
-  --modules="connectefi part_gpt part_msdos fat ntfs ext2 btrfs normal linux chain configfile search search_fs_file search_fs_uuid search_label echo test sleep" \
+  --modules="${grub_modules}" \
   "boot/grub/grub.cfg=${embedded_config}"
 
 sha256sum "${output_directory}/grubx64.efi" | awk '{print $1}' > "${output_directory}/grubx64.efi.sha256"
